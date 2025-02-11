@@ -1,0 +1,49 @@
+CREATE DATABASE dmarc_report;
+
+USE DATABASE dmarc_report;
+
+CREATE TABLE reports (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    report_id VARCHAR(255) DEFAULT NULL,
+    org_name VARCHAR(255) DEFAULT NULL,
+    email VARCHAR(255) DEFAULT NULL,
+    date_range_begin DATETIME DEFAULT NULL,
+    date_range_end DATETIME DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+
+CREATE TABLE records (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    report_id INT DEFAULT NULL,
+    source_ip VARBINARY(16) DEFAULT NULL,
+    count INT DEFAULT NULL,
+    disposition VARCHAR(50) DEFAULT NULL,
+    dkim_policy VARCHAR(50) DEFAULT NULL,
+    spf_policy VARCHAR(50) DEFAULT NULL,
+    envelope_to VARCHAR(255) DEFAULT NULL,
+    envelope_from VARCHAR(255) DEFAULT NULL,
+    header_from VARCHAR(255) DEFAULT NULL,
+    FOREIGN KEY (report_id) REFERENCES reports (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+
+CREATE TABLE auth_dkim (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    record_id INT DEFAULT NULL,
+    domain VARCHAR(255) DEFAULT NULL,
+    selector VARCHAR(100) DEFAULT NULL,
+    result VARCHAR(50) DEFAULT NULL,
+    FOREIGN KEY (record_id) REFERENCES records (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+
+CREATE TABLE auth_spf (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    record_id INT DEFAULT NULL,
+    domain VARCHAR(255) DEFAULT NULL,
+    scope VARCHAR(50) DEFAULT NULL,
+    result VARCHAR(50) DEFAULT NULL,
+    FOREIGN KEY (record_id) REFERENCES records (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+
+CREATE TABLE own_ips (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip VARBINARY(16)
+) ENGINE = InnoDB;
