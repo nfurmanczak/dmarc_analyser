@@ -7,30 +7,30 @@ import mysql.connector
 
 def parse_dmarc_report(file_path):
     """
-    Versucht, die XML-Datei zu parsen. Bei Fehlern wird eine aussagekräftige
-    Fehlermeldung ausgegeben und das Programm beendet.
+    Attempts to parse the XML file. If errors occur, a meaningful
+    error message is displayed and the programme is terminated..
     """
     try:
         tree = ET.parse(file_path)
         return tree.getroot()
     except FileNotFoundError:
-        print(f"Fehler: Die Datei '{file_path}' wurde nicht gefunden.")
+        print(f"Error: File '{file_path}' not found")
         sys.exit(1)
     except ET.ParseError as e:
-        print(f"Fehler beim Parsen der XML-Datei: {e}")
+        print(f"Error parsing the XML file:: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+        print(f"An unexpected error: {e}")
         sys.exit(1)
 
 def extract_report_metadata(root):
     """
-    Extrahiert die Metadaten aus dem <report_metadata>-Element.
-    Erwartete Elemente: org_name, email, report_id, date_range (begin und end)
+    Extracts the metadata from the <report_metadata> element.
+    Expected elements: org_name, email, report_id, date_range (begin and end)
     """
     report_metadata = root.find("report_metadata")
     if report_metadata is None:
-        print("Fehler: Kein <report_metadata>-Element im XML gefunden.")
+        print("Error: No <report_metadata> found in XML file.")
         sys.exit(1)
 
     org_name = report_metadata.find("org_name").text if report_metadata.find("org_name") is not None else ""
@@ -61,11 +61,10 @@ def extract_report_metadata(root):
 
 def parse_records(root):
     """
-    Durchläuft alle <record>-Elemente im XML und speichert diese als Dictionary in einer Liste.
+    Runs through all <record> elements in the XML and saves them as a dictionary in a list.
     """
     records = []
     for record in root.findall("record"):
-        # Parsing des <row>-Elements
         row_elem = record.find("row")
         if row_elem is not None:
             source_ip = row_elem.find("source_ip").text if row_elem.find("source_ip") is not None else ""
@@ -80,7 +79,6 @@ def parse_records(root):
         else:
             source_ip, count, disposition, dkim_policy, spf_policy = "", "", "", "", ""
 
-        # Parsing des <identifiers>-Elements
         identifiers_elem = record.find("identifiers")
         if identifiers_elem is not None:
             envelope_to = identifiers_elem.find("envelope_to").text if identifiers_elem.find("envelope_to") is not None else ""
@@ -89,7 +87,6 @@ def parse_records(root):
         else:
             envelope_to, envelope_from, header_from = "", "", ""
 
-        # Parsing des optionalen <auth_results>-Elements
         auth_results_elem = record.find("auth_results")
         dkim_auth = {}
         spf_auth = {}
@@ -134,23 +131,24 @@ def parse_records(root):
 
 def write_to_database(report_metadata, records, db_config):
     """
-    Schreibt die Report-Metadaten und alle Record-Datensätze in die MySQL-Datenbank.
+    Writes the report metadata and all record data sets to the MySQL database.
 
     :param report_metadata: Tuple (org_name, email, report_id, date_range_begin, date_range_end)
-    :param records: Liste von Dictionaries, die einzelne Record-Datensätze repräsentieren
-    :param db_config: Dictionary mit Datenbank-Konfigurationsparametern, z. B.
-                      {
-                          "host": "localhost",
-                          "user": "dein_benutzer",
-                          "password": "dein_passwort",
-                          "database": "dmarc_db"
-                      }
+    :param records: List of dictionaries that represent individual record data sets
+    :param db_config: Dictionary with database configuration parameters, e.g.
+        {
+        "host": "localhost",
+        "user": "your_user",
+        "password": "your_password",
+        "database": "dmarc_db
+        }
     """
+
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
 
-        # 1. Insert Report-Metadaten in dmarc_reports
+
         insert_report_query = """
             INSERT INTO reports (report_id, org_name, email, date_range_begin, date_range_end)
             VALUES (%s, %s, %s, %s, %s)
@@ -161,7 +159,7 @@ def write_to_database(report_metadata, records, db_config):
         report_db_id = cursor.lastrowid
         print(f"Inserted report with id {report_db_id}")
 
-        # 2. Prepare Queries für Record-Datensätze und Authentifizierungsergebnisse
+
         insert_record_query = """
             INSERT INTO records
                 (report_id, source_ip, count, disposition, dkim_policy, spf_policy,
@@ -177,7 +175,7 @@ def write_to_database(report_metadata, records, db_config):
             VALUES (%s, %s, %s, %s)
         """
 
-        # 3. Gehe alle Records durch und schreibe sie in die DB
+
         for record in records:
             row = record.get("row", {})
             identifiers = record.get("identifiers", {})
@@ -206,7 +204,6 @@ def write_to_database(report_metadata, records, db_config):
             conn.commit()
             record_db_id = cursor.lastrowid
 
-            # Insert DKIM auth results, falls vorhanden
             dkim_auth = record.get("auth_results", {}).get("dkim", {})
             if dkim_auth and dkim_auth.get("result"):
                 cursor.execute(insert_dkim_query, (
@@ -217,7 +214,6 @@ def write_to_database(report_metadata, records, db_config):
                 ))
                 conn.commit()
 
-            # Insert SPF auth results, falls vorhanden
             spf_auth = record.get("auth_results", {}).get("spf", {})
             if spf_auth and spf_auth.get("result"):
                 cursor.execute(insert_spf_query, (
@@ -230,25 +226,24 @@ def write_to_database(report_metadata, records, db_config):
 
         cursor.close()
         conn.close()
-        print("Daten erfolgreich in die Datenbank geschrieben.")
+        print("DMARC report successfully written to database.")
     except mysql.connector.Error as err:
-        print("MySQL Fehler:", err)
+        print("MySQL Error:", err)
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Liest einen DMARC XML Report ein, extrahiert die Report-Metadaten, parst alle Record-Datensätze in ein Array und schreibt die Daten in eine MySQL-Datenbank."
+        description="Reads a DMARC XML report, extracts the report metadata, parses all record data sets into an array and writes the data to a MySQL database."
     )
-    parser.add_argument("xmlfile", help="Pfad zur DMARC XML-Datei")
+    parser.add_argument("xmlfile", help="Path to xmlfile.")
     args = parser.parse_args()
 
     root = parse_dmarc_report(args.xmlfile)
 
-    # Report-Metadaten extrahieren
     org_name, email, report_id, date_range_begin, date_range_end = extract_report_metadata(root)
 
-    # Überprüfen, ob wichtige Metadaten vorhanden sind
+    # Check if important informations could be found in the metadata section
     if not org_name or not report_id or not date_range_begin or not date_range_end:
-        print("Fehler: org_name, report_id, date_range_begin oder date_range_end sind leer. Das Skript wird beendet.")
+        print("Error: org_name, report_id, date_range_begin oder date_range_end are empty or not found.")
         sys.exit(1)
 
     print("Report Metadata:")
@@ -258,10 +253,10 @@ def main():
     print(f"  Date Range Begin: {date_range_begin}")
     print(f"  Date Range End: {date_range_end}\n")
 
-    # Alle Record-Datensätze parsen
+    # Parse all records
     records = parse_records(root)
 
-    # Datenbank-Konfiguration (bitte anpassen)
+    # MySQL
     db_config = {
         "host": "localhost",
         "user": "root",
@@ -269,7 +264,7 @@ def main():
         "database": "dmarc_report"
     }
 
-    # Daten in die Datenbank schreiben
+    # Write data to database
     write_to_database((org_name, email, report_id, date_range_begin, date_range_end), records, db_config)
 
 if __name__ == "__main__":
