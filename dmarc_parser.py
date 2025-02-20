@@ -23,6 +23,22 @@ def parse_dmarc_report(file_path):
         print(f"An unexpected error: {e}")
         sys.exit(1)
 
+def extract_report_policy_published(root):
+    """
+    Extract only the domain from the <policy_published> element.
+    """
+
+    report_policy_published = root.find("policy_published")
+    if report_policy_published is None:
+        print("Error: No <policy_published> found in the XML file.")
+        sys.exit(1)
+
+    domain = report_policy_published.find("domain").text if report_policy_published.find("domain") is not None else ""
+
+    return domain
+
+
+
 def extract_report_metadata(root):
     """
     Extracts the metadata from the <report_metadata> element.
@@ -150,11 +166,11 @@ def write_to_database(report_metadata, records, db_config):
 
 
         insert_report_query = """
-            INSERT INTO reports (report_id, org_name, email, date_range_begin, date_range_end)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO reports (report_id, org_name, email, date_range_begin, date_range_end, domain)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """
-        org_name, email, report_id, date_range_begin, date_range_end = report_metadata
-        cursor.execute(insert_report_query, (report_id, org_name, email, date_range_begin, date_range_end))
+        org_name, email, report_id, date_range_begin, date_range_end, domain = report_metadata
+        cursor.execute(insert_report_query, (report_id, org_name, email, date_range_begin, date_range_end, domain))
         conn.commit()
         report_db_id = cursor.lastrowid
         print(f"Inserted report with id {report_db_id}")
@@ -240,9 +256,10 @@ def main():
     root = parse_dmarc_report(args.xmlfile)
 
     org_name, email, report_id, date_range_begin, date_range_end = extract_report_metadata(root)
+    domain = extract_report_policy_published(root)
 
     # Check if important informations could be found in the metadata section
-    if not org_name or not report_id or not date_range_begin or not date_range_end:
+    if not org_name or not report_id or not date_range_begin or not date_range_end or not domain:
         print("Error: org_name, report_id, date_range_begin oder date_range_end are empty or not found.")
         sys.exit(1)
 
@@ -252,6 +269,7 @@ def main():
     print(f"  Report ID: {report_id}")
     print(f"  Date Range Begin: {date_range_begin}")
     print(f"  Date Range End: {date_range_end}\n")
+    print(f"  Domain: {domain}\n")
 
     # Parse all records
     records = parse_records(root)
@@ -265,7 +283,7 @@ def main():
     }
 
     # Write data to database
-    write_to_database((org_name, email, report_id, date_range_begin, date_range_end), records, db_config)
+    write_to_database((org_name, email, report_id, date_range_begin, date_range_end, domain), records, db_config)
 
 if __name__ == "__main__":
     main()
